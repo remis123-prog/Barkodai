@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Barkodų Kontrolė</title>
+    
+    <!-- Tailwind CSS (Modernus dizainas) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SheetJS (Excel skaitymas) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    
+    <!-- FontAwesome (Ikonos) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Google Fonts (Inter fontas) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Animacijos */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .animate-success { animation: pulse-green 0.5s; background-color: #d1fae5 !important; border-color: #10b981 !important; }
+        .animate-error { animation: shake 0.3s; background-color: #fee2e2 !important; border-color: #ef4444 !important; }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col items-center justify-center p-4 text-slate-800">
+
+    <!-- Pagrindinė kortelė -->
+    <div class="w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+        
+        <!-- Header -->
+        <div class="bg-slate-900 p-6 text-white flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold tracking-wide"><i class="fa-solid fa-barcode mr-2 text-blue-400"></i>SCAN MASTER</h1>
+                <p class="text-xs text-slate-400 mt-1">Barkodų tikrinimo sistema</p>
+            </div>
+            <div id="statusIcon" class="text-2xl opacity-50">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+        </div>
+
+        <!-- 1. Failo zona (Drag & Drop) -->
+        <div class="p-6 pb-2">
+            <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group relative">
+                <input type="file" id="fileInput" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                
+                <div id="uploadContent">
+                    <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                    </div>
+                    <p class="text-sm font-semibold text-gray-700">Paspauskite arba įtempkite Excel failą</p>
+                    <p class="text-xs text-gray-400 mt-1">.xlsx arba .xls formatai</p>
+                </div>
+
+                <div id="fileInfo" class="hidden">
+                    <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <i class="fa-solid fa-file-excel text-xl"></i>
+                    </div>
+                    <p id="fileName" class="text-sm font-bold text-gray-800 truncate"></p>
+                    <p class="text-xs text-green-600 mt-1 font-semibold">Failas paruoštas</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistikos juosta -->
+        <div class="px-6 py-2 grid grid-cols-2 gap-4">
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
+                <p class="text-xs text-slate-500 uppercase font-bold tracking-wider">Liko rasti</p>
+                <p id="countRemaining" class="text-2xl font-bold text-slate-800">0</p>
+            </div>
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
+                <p class="text-xs text-slate-500 uppercase font-bold tracking-wider">Nuskaityta</p>
+                <p id="countScanned" class="text-2xl font-bold text-blue-600">0</p>
+            </div>
+        </div>
+
+        <!-- 2. Skanavimo zona -->
+        <div class="p-6 pt-2">
+            <div class="relative">
+                <input type="text" id="codeInput" 
+                    placeholder="Skanuoti čia..." 
+                    class="w-full pl-4 pr-12 py-4 text-lg font-mono font-semibold text-slate-700 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    disabled
+                    autocomplete="off">
+                
+                <button id="manualBtn" class="absolute right-2 top-2 bottom-2 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg px-4 transition-colors disabled:opacity-50" disabled>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+
+            <!-- Rezultato pranešimas -->
+            <div id="resultBox" class="mt-4 p-4 rounded-xl text-center hidden">
+                <p id="resultText" class="font-bold text-lg"></p>
+                <p id="resultCode" class="font-mono text-sm opacity-80 mt-1"></p>
+            </div>
+        </div>
+
+        <!-- 3. Sąrašas (Collapsible) -->
+        <div class="border-t border-gray-100">
+            <button id="toggleListBtn" class="w-full px-6 py-3 text-left text-sm font-semibold text-slate-500 hover:bg-gray-50 flex justify-between items-center transition-colors">
+                <span><i class="fa-solid fa-list-ul mr-2"></i>Sąrašas</span>
+                <i id="chevronIcon" class="fa-solid fa-chevron-down transition-transform"></i>
+            </button>
+            
+            <div id="listContainer" class="h-0 overflow-hidden transition-all duration-300 bg-slate-50">
+                <div id="codesList" class="p-4 h-48 overflow-y-auto space-y-1">
+                    <!-- Kodai bus čia -->
+                    <p class="text-center text-gray-400 text-xs py-4">Sąrašas tuščias</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-center mt-6 text-gray-400 text-xs">
+        <p>Sukurta inventorizacijai ir prekių tikrinimui</p>
+    </div>
+
+    <!-- JAVASCRIPT LOGIKA -->
+    <script>
+        // Būsenos kintamieji
+        let codesDatabase = new Set(); // Naudojame Set greitesniam tikrinimui
+        let initialCount = 0;
+        let scannedCount = 0;
+        let audioCtx = null;
+
+        // Elementai
+        const els = {
+            dropZone: document.getElementById('dropZone'),
+            fileInput: document.getElementById('fileInput'),
+            uploadContent: document.getElementById('uploadContent'),
+            fileInfo: document.getElementById('fileInfo'),
+            fileName: document.getElementById('fileName'),
+            codeInput: document.getElementById('codeInput'),
+            manualBtn: document.getElementById('manualBtn'),
+            countRemaining: document.getElementById('countRemaining'),
+            countScanned: document.getElementById('countScanned'),
+            codesList: document.getElementById('codesList'),
+            resultBox: document.getElementById('resultBox'),
+            resultText: document.getElementById('resultText'),
+            resultCode: document.getElementById('resultCode'),
+            statusIcon: document.getElementById('statusIcon'),
+            toggleListBtn: document.getElementById('toggleListBtn'),
+            listContainer: document.getElementById('listContainer'),
+            chevronIcon: document.getElementById('chevronIcon')
+        };
+
+        // --- Garsų sistema (Sintezatorius) ---
+        function playTone(type) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'success') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } else {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+            }
+        }
+
+        // --- UI Logika ---
+
+        // Failo įkėlimo efektas
+        els.fileInput.addEventListener('change', handleFileSelect);
+        
+        // Drag over efektai
+        els.dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            els.dropZone.classList.add('border-blue-500', 'bg-blue-50');
+        });
+        els.dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            els.dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+        });
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Atnaujinti UI įkėlimo zoną
+            els.uploadContent.classList.add('hidden');
+            els.fileInfo.classList.remove('hidden');
+            els.fileName.textContent = file.name;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    
+                    // Išvalyti ir paruošti duomenis
+                    codesDatabase.clear();
+                    let tempList = [];
+                    jsonData.flat().forEach(code => {
+                        if (code !== undefined && code !== null && String(code).trim() !== "") {
+                            const cleanCode = String(code).trim();
+                            codesDatabase.add(cleanCode);
+                            tempList.push(cleanCode);
+                        }
+                    });
+
+                    initialCount = codesDatabase.size;
+                    scannedCount = 0;
+                    
+                    updateStats();
+                    renderList(tempList);
+                    
+                    // Aktyvuoti skanerį
+                    els.codeInput.disabled = false;
+                    els.manualBtn.disabled = false;
+                    els.codeInput.focus();
+                    
+                    // Atidaryti sąrašą trumpam
+                    toggleList(true);
+                    setTimeout(() => toggleList(false), 2000);
+
+                } catch (err) {
+                    alert("Klaida skaitant failą. Įsitikinkite, kad tai galiojantis Excel failas.");
+                    console.error(err);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Tikrinimo logika
+        function checkCode() {
+            const code = els.codeInput.value.trim();
+            if (!code) return;
+
+            els.codeInput.value = '';
+            els.codeInput.focus();
+
+            const container = els.codeInput.parentElement; // Input konteineris efektams
+
+            if (codesDatabase.has(code)) {
+                // RASTAS (SĖKMĖ)
+                codesDatabase.delete(code);
+                scannedCount++;
+                
+                playTone('success');
+                showResult(true, code);
+                updateStats();
+                removeFromList(code);
+                
+                // Žalias blykstelėjimas input lauke
+                els.codeInput.classList.add('animate-success');
+                setTimeout(() => els.codeInput.classList.remove('animate-success'), 500);
+
+            } else {
+                // NERASTAS (KLAIDA)
+                playTone('error');
+                showResult(false, code);
+                
+                // Raudonas sudrebėjimas
+                els.codeInput.classList.add('animate-error');
+                setTimeout(() => els.codeInput.classList.remove('animate-error'), 300);
+            }
+        }
+
+        function showResult(isSuccess, code) {
+            els.resultBox.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800');
+            
+            if (isSuccess) {
+                els.resultBox.classList.add('bg-green-100', 'text-green-800');
+                els.resultText.innerHTML = '<i class="fa-solid fa-check-circle mr-2"></i>RASTAS';
+                els.statusIcon.innerHTML = '<i class="fa-solid fa-circle-check text-green-400"></i>';
+                els.statusIcon.classList.remove('opacity-50');
+            } else {
+                els.resultBox.classList.add('bg-red-100', 'text-red-800');
+                els.resultText.innerHTML = '<i class="fa-solid fa-circle-xmark mr-2"></i>NERASTAS';
+                els.statusIcon.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-500"></i>';
+                els.statusIcon.classList.remove('opacity-50');
+            }
+            els.resultCode.textContent = code;
+        }
+
+        function updateStats() {
+            els.countRemaining.textContent = codesDatabase.size;
+            els.countScanned.textContent = scannedCount;
+        }
+
+        // Sąrašo valdymas
+        function renderList(list) {
+            els.codesList.innerHTML = '';
+            list.forEach(code => {
+                const div = document.createElement('div');
+                div.id = `code-${code}`;
+                div.className = "text-sm font-mono text-slate-600 bg-white border border-slate-100 px-3 py-2 rounded flex items-center";
+                div.innerHTML = `<i class="fa-solid fa-barcode mr-2 text-slate-300"></i>${code}`;
+                els.codesList.appendChild(div);
+            });
+        }
+
+        function removeFromList(code) {
+            const el = document.getElementById(`code-${code}`);
+            if (el) {
+                el.classList.add('bg-green-100', 'text-green-800', 'transition-all', 'duration-500');
+                el.innerHTML = `<i class="fa-solid fa-check mr-2"></i>${code}`;
+                // Galima paslėpti po sekundės, jei norima
+                setTimeout(() => {
+                    el.style.height = '0';
+                    el.style.opacity = '0';
+                    el.style.padding = '0';
+                    el.style.margin = '0';
+                    el.style.border = 'none';
+                }, 1000);
+            }
+        }
+
+        // List Toggle
+        let isListOpen = false;
+        function toggleList(forceOpen = null) {
+            isListOpen = forceOpen !== null ? forceOpen : !isListOpen;
+            
+            if (isListOpen) {
+                els.listContainer.style.height = '200px'; // Fiksuotas aukštis
+                els.chevronIcon.style.transform = 'rotate(180deg)';
+            } else {
+                els.listContainer.style.height = '0';
+                els.chevronIcon.style.transform = 'rotate(0)';
+            }
+        }
+
+        // Event Listeners
+        els.manualBtn.addEventListener('click', checkCode);
+        els.codeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') checkCode();
+        });
+        els.toggleListBtn.addEventListener('click', () => toggleList());
+
+    </script>
+</body>
+</html>
